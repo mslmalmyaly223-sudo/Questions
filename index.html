@@ -7376,17 +7376,17 @@ window.approveAITask = async function() {
     btn.disabled = true;
 
     try {
-        const batch = writeBatch(db);
+        // التعديل 1: استخدام let بدلاً من const لتمكين فتح دفعات جديدة
+        let currentBatch = writeBatch(db); 
         let opCount = 0;
-        let batches = [];
 
         for (const q of currentViewingTask.questions) {
             const newDocRef = doc(collection(db, "pending_questions"));
-            batch.set(newDocRef, {
+            currentBatch.set(newDocRef, {
                 question: q.question,
                 answers: q.answers || null,
                 correct: q.correct,
-                type: q.type, // تم التعديل ليأخذ النوع من السؤال نفسه
+                type: q.type,
                 grade: currentViewingTask.grade,
                 subject: currentViewingTask.subject,
                 chapter: currentViewingTask.chapter,
@@ -7397,15 +7397,19 @@ window.approveAITask = async function() {
             });
             opCount++;
             
+            // فايربيس يتحمل 500 عملية، نرسل كل 490 معاً
             if (opCount >= 490) {
-                batches.push(batch.commit());
-                batch = writeBatch(db);
+                // التعديل 2: رفع الدفعة فوراً للفايربيس لتخفيف العبء عن المتصفح في حال وجود آلاف الأسئلة
+                await currentBatch.commit(); 
+                currentBatch = writeBatch(db); // فتح دفعة جديدة بأمان
                 opCount = 0;
             }
         }
         
-        if (opCount > 0) batches.push(batch.commit());
-        await Promise.all(batches);
+        // رفع ما تبقى من الأسئلة في الدفعة الأخيرة
+        if (opCount > 0) {
+            await currentBatch.commit();
+        }
 
         const queue = getAIQueue();
         const newQueue = queue.filter(t => t.id !== currentViewingTask.id);
